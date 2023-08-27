@@ -15,3 +15,14 @@ Also have a few ideas of my own that I will try and share in this repository, if
     url     = {https://api.semanticscholar.org/CorpusID:254096365}
 }
 ```
+
+```bibtex
+@inproceedings{sun2023spectr,
+    title     = {SpecTr: Fast Speculative Decoding via Optimal Transport},
+    author    = {Ziteng Sun and Ananda Theertha Suresh and Jae Hun Ro and Ahmad Beirami and Himanshu Jain and Felix Yu and Michael Riley and Sanjiv Kumar},
+    booktitle = {Workshop on Efficient Systems for Foundation Models @ ICML2023},
+    year      = {2023},
+    url       = {https://openreview.net/forum?id=d0mGsaheuT}
+}
+```
+
