@@ -26,3 +26,13 @@ Also have a few ideas of my own that I will try and share in this repository, if
 }
 ```
 
+```bibtex
+@article{Chen2023AcceleratingLL,
+    title     = {Accelerating Large Language Model Decoding with Speculative Sampling},
+    author    = {Charlie Chen and Sebastian Borgeaud and Geoffrey Irving and Jean-Baptiste Lespiau and L. Sifre and John M. Jumper},
+    journal   = {ArXiv},
+    year      = {2023},
+    volume    = {abs/2302.01318},
+    url       = {https://api.semanticscholar.org/CorpusID:256503945}
+}
+```
