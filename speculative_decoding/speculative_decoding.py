@@ -5,6 +5,7 @@ from torch.nn import Module, ModuleList
 from torch import nn, einsum, Tensor
 import torch.nn.functional as F
 
+from rotary_embedding_torch import RotaryEmbedding
 from beartype import beartype
 
 from einops import rearrange
@@ -50,8 +51,10 @@ class CausalAttention(Module):
     def __init__(
         self,
         dim,
+        *,
+        rotary_emb: RotaryEmbedding,
         dim_head = 64,
-        heads = 8
+        heads = 8,
     ):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -59,6 +62,8 @@ class CausalAttention(Module):
         dim_inner = dim_head * heads
 
         self.norm = RMSNorm(dim)
+        self.rotary_emb = rotary_emb
+
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias = False)
         self.to_out = nn.Linear(dim_inner, dim, bias = False)
 
@@ -69,9 +74,9 @@ class CausalAttention(Module):
 
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv = 3, h = h)
 
-        q = q * self.scale
+        q, k = self.rotary_emb.rotate_queries_with_cached_keys(q, k)
 
-        sim = einsum('b h i d, b h j d -> b h i j', q, k)
+        sim = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
         i, j = sim.shape[-2:]
         causal_mask = torch.ones((i, j), device = device, dtype = torch.bool).triu(j - i + 1)
@@ -113,9 +118,11 @@ class Decoder(Module):
 
         self.layers = ModuleList([])
 
+        rotary_emb = RotaryEmbedding(dim = dim_head)
+
         for _ in range(depth):
             self.layers.append(ModuleList([
-                CausalAttention(dim = dim, dim_head = dim_head, heads = heads),
+                CausalAttention(dim = dim, dim_head = dim_head, heads = heads, rotary_emb = rotary_emb),
                 FeedForward(dim = dim, mult = ff_mult)
             ]))
 
