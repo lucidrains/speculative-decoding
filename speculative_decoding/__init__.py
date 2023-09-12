@@ -1,0 +1,1 @@
+from speculative_decoding.speculative_decoding import Decoder
