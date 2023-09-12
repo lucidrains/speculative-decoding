@@ -1,3 +1,5 @@
+<img src="./speculative-decoding.png" width="500px"></img>\
+
 ## Speculative Decoding (wip)
 
 Explorations into some recent techniques surrounding <a href="https://arxiv.org/abs/2211.17192">speculative decoding</a>
