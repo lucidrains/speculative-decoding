@@ -17,8 +17,9 @@ setup(
     'efficient decoding'
   ],
   install_requires=[
+    'beartype',
     'einops>=0.6.1',
-    'torch>=2.0'
+    'torch>=2.0',
   ],
   classifiers=[
     'Development Status :: 4 - Beta',

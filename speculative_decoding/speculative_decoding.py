@@ -1,3 +1,5 @@
+import math
+
 import torch
 from torch.nn import Module, ModuleList
 from torch import nn, einsum, Tensor
@@ -11,6 +13,25 @@ from einops import rearrange
 
 def exists(val):
     return val is not None
+
+# sampling helpers
+
+def log(t, eps = 1e-20):
+    return torch.log(t.clamp(min = eps))
+
+def gumbel_noise(t):
+    noise = torch.zeros_like(t).uniform_(0, 1)
+    return -log(-log(noise))
+
+def gumbel_sample(t, temperature = 1., dim = -1):
+    return ((t / max(temperature, 1e-10)) + gumbel_noise(t)).argmax(dim = dim)
+
+def top_k(logits, thres = 0.9):
+    k = math.ceil((1 - thres) * logits.shape[-1])
+    val, ind = torch.topk(logits, k)
+    probs = torch.full_like(logits, float('-inf'))
+    probs.scatter_(1, ind, val)
+    return probs
 
 # norm
 
@@ -104,6 +125,32 @@ class Decoder(Module):
         )
 
         self.ignore_index = ignore_index
+
+    @torch.no_grad()
+    def generate(
+        self,
+        prompt: Tensor,
+        seq_len: int,
+        temperature = 1.,
+        filter_thres = 0.9,
+        pad_value = 0.,
+        use_tqdm = False,
+        **kwargs
+    ):
+        n, out = prompt.shape[-1], prompt.clone()
+
+        sample_num_times = max(1, seq_len - prompt.shape[-1])
+
+        for _ in range(sample_num_times):
+            logits = self.forward(out, **kwargs)
+            logits = logits[:, -1]
+
+            logits = top_k(logits, thres = filter_thres)
+            sample = gumbel_sample(logits, temperature = temperature, dim = -1)
+
+            out = torch.cat((out, sample[..., None]), dim = -1)
+
+        return out[..., n:]
 
     def forward(
         self,
