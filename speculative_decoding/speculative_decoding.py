@@ -84,7 +84,8 @@ class Decoder(Module):
         depth,
         heads = 8,
         dim_head = 64,
-        ff_mult = 4
+        ff_mult = 4,
+        ignore_index = -1
     ):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, dim)
@@ -102,11 +103,29 @@ class Decoder(Module):
             nn.Linear(dim, num_tokens, bias = False)
         )
 
-    def forward(self, x):
+        self.ignore_index = ignore_index
+
+    def forward(
+        self,
+        x,
+        return_loss = False
+    ):
+        if return_loss:
+            x, labels = x[:, :-1], x[:, 1:]
+
         x = self.token_emb(x)
 
         for attn, ff in self.layers:
             x = attn(x) + x
             x = ff(x) + x
 
-        return self.to_logits(x)
+        logits = self.to_logits(x)
+
+        if not return_loss:
+            return logits
+
+        return F.cross_entropy(
+            rearrange(logits, 'b n c -> b c n'),
+            labels,
+            ignore_index = self.ignore_index
+        )
