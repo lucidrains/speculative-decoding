@@ -15,6 +15,10 @@ from einops import rearrange
 def exists(val):
     return val is not None
 
+def iter_always(val):
+    while True:
+        yield val
+
 # sampling helpers
 
 def log(t, eps = 1e-20):
@@ -67,12 +71,23 @@ class CausalAttention(Module):
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias = False)
         self.to_out = nn.Linear(dim_inner, dim, bias = False)
 
-    def forward(self, x):
+    def forward(
+        self,
+        x,
+        cache = None
+    ):
         h, device = self.heads, x.device
 
         x = self.norm(x)
 
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv = 3, h = h)
+
+        if exists(cache):
+            ck, cv = cache
+            k = torch.cat((ck, k), dim = -2)
+            v = torch.cat((cv, v), dim = -2)
+
+        cached_kv = torch.stack((k, v))
 
         q, k = self.rotary_emb.rotate_queries_with_cached_keys(q, k)
 
@@ -88,7 +103,9 @@ class CausalAttention(Module):
         out = einsum('b h i j, b h j d -> b h i d', attn, v)
 
         out = rearrange(out, 'b h n d -> b n (h d)')
-        return self.to_out(out)
+        out = self.to_out(out)
+
+        return out, cached_kv
 
 def FeedForward(dim, mult = 4):
     dim_inner = dim * mult
@@ -141,15 +158,16 @@ class Decoder(Module):
         temperature = 1.,
         filter_thres = 0.9,
         pad_value = 0.,
-        use_tqdm = False,
-        **kwargs
+        use_tqdm = False
     ):
         n, out = prompt.shape[-1], prompt.clone()
 
         sample_num_times = max(1, seq_len - prompt.shape[-1])
 
+        cache = None
+
         for _ in range(sample_num_times):
-            logits = self.forward(out, **kwargs)
+            logits, cache = self.forward(out, cache = cache, return_cache = True)
             logits = logits[:, -1]
 
             logits = top_k(logits, thres = filter_thres)
@@ -162,21 +180,46 @@ class Decoder(Module):
     def forward(
         self,
         x,
-        return_loss = False
+        return_loss = False,
+        return_cache = False,
+        cache = None
     ):
         if return_loss:
             x, labels = x[:, :-1], x[:, 1:]
 
         x = self.token_emb(x)
 
+        # next cache
+
+        new_cached_kvs = []
+
+        # if cache passed in, just use the last token
+
+        if exists(cache):
+            assert not self.training
+            iter_cache = iter(cache)
+            x = x[:, -1:]
+        else:
+            iter_cache = iter_always(None)
+
         for attn, ff in self.layers:
-            x = attn(x) + x
+            residual = x
+            attn_out, cached_kv = attn(x, cache = next(iter_cache))
+            x = residual + attn_out
+
+            new_cached_kvs.append(cached_kv)
+
             x = ff(x) + x
+
+        new_cached_kvs = torch.stack(new_cached_kvs)
 
         logits = self.to_logits(x)
 
         if not return_loss:
-            return logits
+            if not return_cache:
+                return logits
+
+            return logits, new_cached_kvs
 
         return F.cross_entropy(
             rearrange(logits, 'b n c -> b c n'),
