@@ -157,8 +157,6 @@ class Decoder(Module):
         seq_len: int,
         temperature = 1.,
         filter_thres = 0.9,
-        pad_value = 0.,
-        use_tqdm = False
     ):
         n, out = prompt.shape[-1], prompt.clone()
 
