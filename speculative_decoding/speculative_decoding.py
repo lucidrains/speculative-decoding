@@ -34,7 +34,7 @@ def top_k(logits, thres = 0.9):
     k = math.ceil((1 - thres) * logits.shape[-1])
     val, ind = torch.topk(logits, k)
     probs = torch.full_like(logits, float('-inf'))
-    probs.scatter_(1, ind, val)
+    probs.scatter_(-1, ind, val)
     return probs
 
 # different decoding strategies
@@ -78,8 +78,10 @@ def speculative_decoding(
     eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
     """
 
-    prompt_seq_len, out = prompt.shape[-1], prompt.clone()
+    prompt_seq_len, out, device = prompt.shape[-1], prompt.clone(), prompt.device
     sample_num_times = max(0, seq_len - prompt_seq_len)
+
+    assert prompt.shape[0] == 1, 'batched spec decoding not supported yet'
 
     cache = None
     small_cache = None
@@ -89,26 +91,57 @@ def speculative_decoding(
         # predict with smaller network
 
         all_small_logits = []
+        q_sampled_out = []
 
         for _ in range(gamma):
             small_logits, small_cache = small_net(out, cache = small_cache, return_cache = True)
             small_logits = small_logits[:, -1]
 
+            small_logits = top_k(small_logits, thres = filter_thres)
             all_small_logits.append(small_logits)
 
-            small_logits = top_k(small_logits, thres = filter_thres)
             sample = gumbel_sample(small_logits, temperature = temperature, dim = -1)
-
             out = torch.cat((out, sample[..., None]), dim = -1)
+
+            q_sampled_out.append(rearrange(sample, 'b -> b 1 1'))
+
+        q_sampled_out = torch.cat(q_sampled_out, dim = -2)
+        small_logits = torch.stack(all_small_logits, dim = -2)
 
         # verify with larger network
 
         logits, cache = net(out, cache = cache, return_cache = True)
 
-        logits = logits[..., -gamma:, :]
-        small_logits = torch.stack(all_small_logits, dim = -2)
+        logits = logits[..., -(gamma + 1):, :]
+        logits = top_k(logits, thres = filter_thres)
 
-        assert small_logits.shape == logits.shape
+        # prob and prob of small model (p(x) and q(x) in algorithm 1)
+
+        prob = (logits / temperature).softmax(dim = -1)
+        small_prob = (small_logits / temperature).softmax(dim = -1)
+
+        p = prob[:, :-1].gather(-1, q_sampled_out)
+        q = small_prob.gather(-1, q_sampled_out)
+        r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
+
+        n = accepted = (((r > (p / q)).cumsum(dim = -1)) == 0).sum().item()
+
+        prob_next = prob[:, -1]
+
+        if n < gamma:
+            adjusted_prob = F.relu(prob[:, n] - small_prob[:, n])
+            prob_next = adjusted_prob / adjusted_prob.sum(dim = -1, keepdim = True)
+            out = out[:, :-(gamma - n)]
+
+        additional_sampled = torch.multinomial(prob_next, 1)
+
+        out = torch.cat((out, additional_sampled), dim = -1)
+
+        # adjust cache
+
+        next_seq_len = out.shape[-1]
+        cache = cache[..., :(next_seq_len - 1), :]
+        small_cache = small_cache[..., :(next_seq_len - 1), :]
 
     return out[..., prompt_seq_len:]
 
