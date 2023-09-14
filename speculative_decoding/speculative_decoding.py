@@ -166,6 +166,7 @@ class Decoder(Module):
         heads = 8,
         dim_head = 64,
         ff_mult = 4,
+        weight_tie_layers = False,
         ignore_index = -1
     ):
         super().__init__()
@@ -175,11 +176,16 @@ class Decoder(Module):
 
         rotary_emb = RotaryEmbedding(dim = dim_head)
 
+        attn = None
+        ff = None
+
         for _ in range(depth):
-            self.layers.append(ModuleList([
-                CausalAttention(dim = dim, dim_head = dim_head, heads = heads, rotary_emb = rotary_emb),
-                FeedForward(dim = dim, mult = ff_mult)
-            ]))
+
+            if not weight_tie_layers or not (exists(attn) and exists(ff)):
+                attn = CausalAttention(dim = dim, dim_head = dim_head, heads = heads, rotary_emb = rotary_emb)
+                ff = FeedForward(dim = dim, mult = ff_mult)
+
+            self.layers.append(ModuleList([attn, ff]))
 
         self.to_logits = nn.Sequential(
             RMSNorm(dim),
