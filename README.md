@@ -1,4 +1,4 @@
-<img src="./speculative-decoding.png" width="500px"></img>\
+<img src="./speculative-decoding.png" width="500px"></img>
 
 ## Speculative Decoding (wip)
 
