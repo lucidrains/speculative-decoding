@@ -15,9 +15,8 @@ from einops import rearrange
 def exists(val):
     return val is not None
 
-def iter_always(val):
-    while True:
-        yield val
+def default(val, d):
+    return val if exists(val) else d
 
 # sampling helpers
 
@@ -195,14 +194,14 @@ class Decoder(Module):
 
         if exists(cache):
             assert not self.training
-            iter_cache = iter(cache)
             x = x[:, -1:]
-        else:
-            iter_cache = iter_always(None)
+
+        cache = default(cache, [])
+        iter_cache = iter(cache)
 
         for attn, ff in self.layers:
             residual = x
-            attn_out, cached_kv = attn(x, cache = next(iter_cache))
+            attn_out, cached_kv = attn(x, cache = next(iter_cache, None))
             x = residual + attn_out
 
             new_cached_kvs.append(cached_kv)
