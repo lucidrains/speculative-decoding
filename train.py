@@ -101,6 +101,7 @@ small_optim = Adam(small_model.parameters(), lr = LEARNING_RATE)
 
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
     model.train()
+    small_model.train()
 
     for _ in range(GRAD_ACCUM_EVERY):
         data = next(train_loader)
@@ -129,20 +130,30 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
             valid_data = next(val_loader)
 
             loss = model(valid_data, return_loss = True)
-            print(f"validation loss: {loss.item()}")
+            print(f"validation loss: {loss.item():.3f}")
 
             small_loss = small_model(valid_data, return_loss = True)
-            print(f"validation small loss: {small_loss.item()}")
+            print(f"validation small loss: {small_loss.item():.3f}")
 
     if i % GENERATE_EVERY == 0:
         model.eval()
+        small_model.eval()
+
         inp = random.choice(val_dataset)[:PRIME_LENGTH]
         prime = decode_tokens(inp)
         print(f"%s \n\n %s", (prime, "*" * 100))
 
-        sampled, elapsed = benchmark(base_decoding)(model, inp[None, ...], GENERATE_LENGTH)
+        prompt = inp[None, ...]
 
-        output_str = decode_tokens(sampled[0])
+        sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 
-        print(output_str, "\n")
-        print(f'base decoding in: {elapsed:.3f}s\n')
+        spec_decoding_sampled, spec_decoding_elapsed = benchmark(speculative_decoding)(model, small_model, prompt, GENERATE_LENGTH)
+
+        base_decode_output = decode_tokens(sampled[0])
+        spec_decode_output = decode_tokens(spec_decoding_sampled[0])
+
+        print("\nbase decoding:\n\n", base_decode_output, "\n")
+        print("\nspec decoding:\n\n", spec_decode_output, "\n")
+
+        print(f'base decoding in: {base_decode_elapsed:.3f}s\n')
+        print(f'spec decoding in: {spec_decoding_elapsed:.3f}s\n')

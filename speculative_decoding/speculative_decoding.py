@@ -47,9 +47,8 @@ def base_decoding(
     temperature = 1.,
     filter_thres = 0.9,
 ):
-    n, out = prompt.shape[-1], prompt.clone()
-
-    sample_num_times = max(1, seq_len - prompt.shape[-1])
+    prompt_seq_len, out = prompt.shape[-1], prompt.clone()
+    sample_num_times = max(0, seq_len - prompt_seq_len)
 
     cache = None
 
@@ -62,7 +61,7 @@ def base_decoding(
 
         out = torch.cat((out, sample[..., None]), dim = -1)
 
-    return out[..., n:]
+    return out[..., prompt_seq_len:]
 
 
 @torch.no_grad()
@@ -71,10 +70,47 @@ def speculative_decoding(
     small_net: Module,
     prompt: Tensor,
     seq_len: int,
+    gamma: int = 5,
     temperature = 1.,
     filter_thres = 0.9,
 ):
-    raise NotImplementedError
+    """
+    eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
+    """
+
+    prompt_seq_len, out = prompt.shape[-1], prompt.clone()
+    sample_num_times = max(0, seq_len - prompt_seq_len)
+
+    cache = None
+    small_cache = None
+
+    while out.shape[-1] < seq_len:
+
+        # predict with smaller network
+
+        all_small_logits = []
+
+        for _ in range(gamma):
+            small_logits, small_cache = small_net(out, cache = small_cache, return_cache = True)
+            small_logits = small_logits[:, -1]
+
+            all_small_logits.append(small_logits)
+
+            small_logits = top_k(small_logits, thres = filter_thres)
+            sample = gumbel_sample(small_logits, temperature = temperature, dim = -1)
+
+            out = torch.cat((out, sample[..., None]), dim = -1)
+
+        # verify with larger network
+
+        logits, cache = net(out, cache = cache, return_cache = True)
+
+        logits = logits[..., -gamma:, :]
+        small_logits = torch.stack(all_small_logits, dim = -2)
+
+        assert small_logits.shape == logits.shape
+
+    return out[..., prompt_seq_len:]
 
 # norm
 
