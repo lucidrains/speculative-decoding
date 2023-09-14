@@ -37,6 +37,33 @@ def top_k(logits, thres = 0.9):
     probs.scatter_(1, ind, val)
     return probs
 
+# different decoding strategies
+
+@torch.no_grad()
+def base_decoding(
+    net: Module,
+    prompt: Tensor,
+    seq_len: int,
+    temperature = 1.,
+    filter_thres = 0.9,
+):
+    n, out = prompt.shape[-1], prompt.clone()
+
+    sample_num_times = max(1, seq_len - prompt.shape[-1])
+
+    cache = None
+
+    for _ in range(sample_num_times):
+        logits, cache = net(out, cache = cache, return_cache = True)
+        logits = logits[:, -1]
+
+        logits = top_k(logits, thres = filter_thres)
+        sample = gumbel_sample(logits, temperature = temperature, dim = -1)
+
+        out = torch.cat((out, sample[..., None]), dim = -1)
+
+    return out[..., n:]
+
 # norm
 
 class RMSNorm(Module):
@@ -148,31 +175,6 @@ class Decoder(Module):
         )
 
         self.ignore_index = ignore_index
-
-    @torch.no_grad()
-    def generate(
-        self,
-        prompt: Tensor,
-        seq_len: int,
-        temperature = 1.,
-        filter_thres = 0.9,
-    ):
-        n, out = prompt.shape[-1], prompt.clone()
-
-        sample_num_times = max(1, seq_len - prompt.shape[-1])
-
-        cache = None
-
-        for _ in range(sample_num_times):
-            logits, cache = self.forward(out, cache = cache, return_cache = True)
-            logits = logits[:, -1]
-
-            logits = top_k(logits, thres = filter_thres)
-            sample = gumbel_sample(logits, temperature = temperature, dim = -1)
-
-            out = torch.cat((out, sample[..., None]), dim = -1)
-
-        return out[..., n:]
 
     def forward(
         self,

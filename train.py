@@ -2,13 +2,18 @@ import gzip
 import random
 import tqdm
 import numpy as np
+import time
+from functools import wraps
 
 import torch
 from torch.optim import Adam
 from torch.nn import functional as F
 from torch.utils.data import DataLoader, Dataset
 
-from speculative_decoding import Decoder
+from speculative_decoding import (
+    Decoder,
+    base_decoding
+)
 
 # constants
 
@@ -34,6 +39,15 @@ def decode_token(token):
 
 def decode_tokens(tokens):
     return "".join(list(map(decode_token, tokens)))
+
+def benchmark(fn):
+    @wraps(fn)
+    def inner(*args, **kwargs):
+        start_time = time.time()
+        out = fn(*args, **kwargs)
+        end_time = time.time()
+        return out, end_time - start_time
+    return inner
 
 # instantiate transformer
 
@@ -100,6 +114,9 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
         prime = decode_tokens(inp)
         print(f"%s \n\n %s", (prime, "*" * 100))
 
-        sample = model.generate(inp[None, ...], GENERATE_LENGTH)
-        output_str = decode_tokens(sample[0])
+        sampled, elapsed = benchmark(base_decoding)(model, inp[None, ...], GENERATE_LENGTH)
+
+        output_str = decode_tokens(sampled[0])
+
         print(output_str, "\n")
+        print(f'base decoding in: {elapsed:.3f}s\n')
