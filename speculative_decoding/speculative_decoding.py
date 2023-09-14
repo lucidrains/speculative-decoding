@@ -194,7 +194,8 @@ class Decoder(Module):
 
         if exists(cache):
             assert not self.training
-            x = x[:, -1:]
+            num_tokens_keep = x.shape[-2] - cache.shape[-2]
+            x = x[:, -num_tokens_keep:]
 
         cache = default(cache, [])
         iter_cache = iter(cache)
