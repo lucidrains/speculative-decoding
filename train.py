@@ -12,14 +12,15 @@ from torch.utils.data import DataLoader, Dataset
 
 from speculative_decoding import (
     Decoder,
-    base_decoding
+    base_decoding,
+    speculative_decoding
 )
 
 # constants
 
 NUM_BATCHES = int(1e5)
 BATCH_SIZE = 4
-GRADIENT_ACCUMULATE_EVERY = 4
+GRAD_ACCUM_EVERY = 4
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 100
 PRIME_LENGTH = 128
@@ -57,6 +58,14 @@ model = Decoder(
     depth = 8
 ).cuda()
 
+# small model
+
+small_model = Decoder(
+    num_tokens = 256,
+    dim = 512,
+    depth = 2
+).cuda()
+
 # prepare enwik8 data
 
 with gzip.open("./data/enwik8.gz") as file:
@@ -86,27 +95,44 @@ val_loader = cycle(DataLoader(val_dataset, batch_size=BATCH_SIZE))
 # optimizer
 
 optim = Adam(model.parameters(), lr = LEARNING_RATE)
+small_optim = Adam(small_model.parameters(), lr = LEARNING_RATE)
 
 # training
 
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
     model.train()
 
-    for _ in range(GRADIENT_ACCUMULATE_EVERY):
-        loss = model(next(train_loader), return_loss = True)
-        loss.backward(loss / GRADIENT_ACCUMULATE_EVERY)
+    for _ in range(GRAD_ACCUM_EVERY):
+        data = next(train_loader)
 
-    print(f"training loss: {loss.item()}")
+        loss = model(data, return_loss = True)
+        small_loss = small_model(data, return_loss = True)
+
+        (loss / GRAD_ACCUM_EVERY).backward()
+        (small_loss / GRAD_ACCUM_EVERY).backward()
+
+    print(f"training loss: {loss.item():.3f}")
+    print(f"training small loss: {small_loss.item():.3f}")
+
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
+    torch.nn.utils.clip_grad_norm_(small_model.parameters(), 0.5)
 
     optim.step()
     optim.zero_grad()
 
+    small_optim.step()
+    small_optim.zero_grad()
+
     if i % VALIDATE_EVERY == 0:
         model.eval()
         with torch.no_grad():
-            loss = model(next(val_loader), return_loss = True)
+            valid_data = next(val_loader)
+
+            loss = model(valid_data, return_loss = True)
             print(f"validation loss: {loss.item()}")
+
+            small_loss = small_model(valid_data, return_loss = True)
+            print(f"validation small loss: {small_loss.item()}")
 
     if i % GENERATE_EVERY == 0:
         model.eval()

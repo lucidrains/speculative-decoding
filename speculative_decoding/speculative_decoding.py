@@ -64,6 +64,18 @@ def base_decoding(
 
     return out[..., n:]
 
+
+@torch.no_grad()
+def speculative_decoding(
+    net: Module,
+    small_net: Module,
+    prompt: Tensor,
+    seq_len: int,
+    temperature = 1.,
+    filter_thres = 0.9,
+):
+    raise NotImplementedError
+
 # norm
 
 class RMSNorm(Module):
