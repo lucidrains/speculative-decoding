@@ -73,6 +73,7 @@ def speculative_decoding(
     gamma: int = 5,
     temperature = 1.,
     filter_thres = 0.9,
+    lenience = 1.
 ):
     """
     eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
@@ -121,7 +122,7 @@ def speculative_decoding(
         small_prob = (small_logits / temperature).softmax(dim = -1)
 
         p = prob[:, :-1].gather(-1, q_sampled_out)
-        q = small_prob.gather(-1, q_sampled_out)
+        q = small_prob.gather(-1, q_sampled_out) * lenience
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
         n = accepted = (((r > (p / q)).cumsum(dim = -1)) == 0).sum().item()
