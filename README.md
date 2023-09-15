@@ -9,6 +9,7 @@ Also have a few ideas of my own that I will try and share in this repository, if
 ## Todo
 
 - [ ] figure out batched spec decoding - different rows may advance at different rates
+- [ ] test beam search spec decoding, as needed for spear-tts
 
 ## Citations
 
