@@ -134,15 +134,17 @@ def speculative_decoding(
             prob_next = adjusted_prob / adjusted_prob.sum(dim = -1, keepdim = True)
             out = out[:, :-(gamma - n)]
 
-        additional_sampled = torch.multinomial(prob_next, 1)
-
-        out = torch.cat((out, additional_sampled), dim = -1)
-
         # adjust cache
 
         next_seq_len = out.shape[-1]
-        cache = cache[..., :(next_seq_len - 1), :]
-        small_cache = small_cache[..., :(next_seq_len - 1), :]
+        cache = cache[..., :next_seq_len, :]
+        small_cache = small_cache[..., :next_seq_len, :]
+
+        # sample the additional token
+
+        next_token = torch.multinomial(prob_next, 1)
+
+        out = torch.cat((out, next_token), dim = -1)
 
     return out[..., prompt_seq_len:]
 

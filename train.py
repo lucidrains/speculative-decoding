@@ -28,6 +28,8 @@ GENERATE_EVERY = 500
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
 
+DEVICE_STR = 'cuda' if torch.cuda.is_available() else 'cpu'
+
 # helpers
 
 def cycle(loader):
@@ -52,19 +54,21 @@ def benchmark(fn):
 
 # instantiate transformer
 
+device = torch.device(DEVICE_STR)
+
 model = Decoder(
     num_tokens = 256,
     dim = 512,
     depth = 8
-).cuda()
+).to(device)
 
 # small model
 
 small_model = Decoder(
     num_tokens = 256,
-    dim = 512,
+    dim = 256,
     depth = 2
-).cuda()
+).to(device)
 
 # prepare enwik8 data
 
@@ -82,7 +86,7 @@ class TextSamplerDataset(Dataset):
     def __getitem__(self, index):
         rand_start = torch.randint(0, self.data.size(0) - self.seq_len, (1,))
         full_seq = self.data[rand_start : rand_start + self.seq_len + 1].long()
-        return full_seq.cuda()
+        return full_seq.to(device)
 
     def __len__(self):
         return self.data.size(0) // self.seq_len
