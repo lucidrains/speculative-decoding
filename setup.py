@@ -20,7 +20,7 @@ setup(
     'beartype',
     'einops>=0.6.1',
     'rotary-embedding-torch>=0.3.0',
-    'torch>=2.0',
+    'torch>=1.12',
   ],
   classifiers=[
     'Development Status :: 4 - Beta',

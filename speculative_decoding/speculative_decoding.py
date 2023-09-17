@@ -63,6 +63,11 @@ def base_decoding(
 
     return out[..., prompt_seq_len:]
 
+def safe_div(num, den, eps = 1e-10):
+    return num / max(den, eps)
+
+def find_first_true_index(bool_tensor, dim = -1):
+    return (bool_tensor.cumsum(dim = dim)).sum(dim = dim)
 
 @torch.no_grad()
 def speculative_decoding(
@@ -118,16 +123,17 @@ def speculative_decoding(
 
         # prob and prob of small model (p(x) and q(x) in algorithm 1)
 
-        prob = (logits / temperature).softmax(dim = -1)
-        small_prob = (small_logits / temperature).softmax(dim = -1)
+        prob = safe_div(logits, temperature).softmax(dim = -1)
+        small_prob = safe_div(small_logits, temperature).softmax(dim = -1)
 
-        p = prob[:, :-1].gather(-1, q_sampled_out)
+        p, prob_next = prob[:, :-1], prob[:, -1]
+
+        p = p.gather(-1, q_sampled_out)
         q = small_prob.gather(-1, q_sampled_out) * lenience
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
-        n = accepted = (((r > (p / q)).cumsum(dim = -1)) == 0).sum().item()
-
-        prob_next = prob[:, -1]
+        accepted = find_first_true_index(r > (p / q))
+        n = accepted[0][0] # need to handle batched spec decoding
 
         if n < gamma:
             adjusted_prob = F.relu(prob[:, n] - small_prob[:, n])
