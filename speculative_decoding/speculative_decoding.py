@@ -133,10 +133,13 @@ def speculative_decoding(
 
         p = p.gather(-1, q_sampled_out)
         q = small_prob.gather(-1, q_sampled_out) * lenience
+
+        p, q = [rearrange(t, 'b n 1 -> b n') for t in (p, q)]
+
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
         accepted = find_first_true_index(r > (p / q))
-        n = accepted[0][0].item() # need to handle batched spec decoding
+        n = accepted.item() # need to handle batched spec decoding
 
         total_accepted += n
         num_steps += 1
