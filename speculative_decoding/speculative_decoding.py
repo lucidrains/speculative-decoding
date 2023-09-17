@@ -92,6 +92,9 @@ def speculative_decoding(
     cache = None
     small_cache = None
 
+    num_steps = 0
+    total_accepted = 0
+
     while out.shape[-1] < seq_len:
 
         # predict with smaller network
@@ -133,7 +136,10 @@ def speculative_decoding(
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
         accepted = find_first_true_index(r > (p / q))
-        n = accepted[0][0] # need to handle batched spec decoding
+        n = accepted[0][0].item() # need to handle batched spec decoding
+
+        total_accepted += n
+        num_steps += 1
 
         if n < gamma:
             adjusted_prob = F.relu(prob[:, n] - small_prob[:, n])
@@ -152,7 +158,7 @@ def speculative_decoding(
 
         out = torch.cat((out, next_token), dim = -1)
 
-    return out[..., prompt_seq_len:]
+    return out[..., prompt_seq_len:], total_accepted / num_steps
 
 # norm
 

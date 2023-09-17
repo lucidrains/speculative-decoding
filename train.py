@@ -30,6 +30,7 @@ PRIME_LENGTH = 128
 GENERATE_EVERY = 500
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
+GAMMA = 5
 
 DEVICE_STR = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -68,14 +69,14 @@ device = torch.device(DEVICE_STR)
 model = Decoder(
     num_tokens = 256,
     dim = 512,
-    depth = 8
+    depth = 10
 ).to(device)
 
 # small model
 
 small_model = Decoder(
     num_tokens = 256,
-    dim = 256,
+    dim = 512,
     depth = 2
 ).to(device)
 
@@ -160,13 +161,14 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 
-        spec_decoding_sampled, spec_decoding_elapsed = benchmark(speculative_decoding)(model, small_model, prompt, GENERATE_LENGTH)
+        (spec_decode_sampled, num_accepted), spec_decode_elapsed = benchmark(speculative_decoding)(model, small_model, prompt, GENERATE_LENGTH, GAMMA)
 
         base_decode_output = decode_tokens(sampled[0])
-        spec_decode_output = decode_tokens(spec_decoding_sampled[0])
+        spec_decode_output = decode_tokens(spec_decode_sampled[0])
 
         print("\nbase decoding:\n\n", base_decode_output, "\n")
         print("\nspec decoding:\n\n", spec_decode_output, "\n")
 
         print(f'base decoding in: {base_decode_elapsed:.3f}ms\n')
-        print(f'spec decoding in: {spec_decoding_elapsed:.3f}ms\n')
+        print(f'spec decoding in: {spec_decode_elapsed:.3f}ms\n')
+        print(f'average num accepted: {num_accepted:.1f} / {GAMMA}\n')
