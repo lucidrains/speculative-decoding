@@ -67,7 +67,7 @@ def safe_div(num, den, eps = 1e-10):
     return num / max(den, eps)
 
 def find_first_true_index(bool_tensor, dim = -1):
-    return (bool_tensor.cumsum(dim = dim)).sum(dim = dim)
+    return (bool_tensor.cumsum(dim = dim) == 0).sum(dim = dim)
 
 @torch.no_grad()
 def speculative_decoding(

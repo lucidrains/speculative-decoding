@@ -3,12 +3,15 @@ import random
 import tqdm
 import numpy as np
 import time
-from functools import wraps
+from functools import wraps, partial
 
 import torch
 from torch.optim import Adam
 from torch.nn import functional as F
+from torch.cuda import synchronize, Event
 from torch.utils.data import DataLoader, Dataset
+
+timer = partial(Event, enable_timing = True)
 
 from speculative_decoding import (
     Decoder,
@@ -46,10 +49,16 @@ def decode_tokens(tokens):
 def benchmark(fn):
     @wraps(fn)
     def inner(*args, **kwargs):
-        start_time = time.time()
+        start_event = timer()
+        end_event = timer()
+        start_event.record()
+
         out = fn(*args, **kwargs)
-        end_time = time.time()
-        return out, end_time - start_time
+
+        end_event.record()
+        torch.cuda.synchronize()
+        elapsed_time_ms = start_event.elapsed_time(end_event)
+        return out, elapsed_time_ms
     return inner
 
 # instantiate transformer
@@ -159,5 +168,5 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
         print("\nbase decoding:\n\n", base_decode_output, "\n")
         print("\nspec decoding:\n\n", spec_decode_output, "\n")
 
-        print(f'base decoding in: {base_decode_elapsed:.3f}s\n')
-        print(f'spec decoding in: {spec_decoding_elapsed:.3f}s\n')
+        print(f'base decoding in: {base_decode_elapsed:.3f}ms\n')
+        print(f'spec decoding in: {spec_decoding_elapsed:.3f}ms\n')
