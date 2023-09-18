@@ -8,8 +8,9 @@ Also have a few ideas of my own that I will try and share in this repository, if
 
 ## Todo
 
+- [x] in early exit scheme, cache the hidden layer during spec decoding, as small and large models share the same first few layers
+
 - [ ] figure out batched spec decoding - different rows may advance at different rates
-- [ ] in early exit scheme, cache the hidden layer during spec decoding, as small and large models share the same first few layers
 - [ ] for early exit, allow an extra transformer block head (separate from main transformer stem)
 - [ ] build out the prophet net idea, but use the same scheme as megabyte, the hierarchical transformer, for the prophet head. this hierarchical transformer would then use the cached embedding from the large model (since we are caching the key / values)
 

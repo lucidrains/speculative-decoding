@@ -7,7 +7,6 @@ import torch.nn.functional as F
 
 from rotary_embedding_torch import RotaryEmbedding
 from beartype import beartype
-from beartype.typing import Optional
 
 from collections import namedtuple
 
@@ -161,8 +160,100 @@ def speculative_decoding(
         # adjust cache
 
         next_seq_len = out.shape[-1]
-        cache = cache[..., :next_seq_len, :]
-        small_cache = small_cache[..., :next_seq_len, :]
+        cache = tuple(t[..., :next_seq_len, :] for t in cache)
+        small_cache = tuple(t[..., :next_seq_len, :] for t in small_cache)
+
+        # sample the additional token
+
+        next_token = torch.multinomial(prob_next, 1)
+
+        out = torch.cat((out, next_token), dim = -1)
+
+    return out[..., prompt_seq_len:], total_accepted / num_steps
+
+@torch.no_grad()
+def speculative_decoding_with_same_model(
+    net: Module,
+    small_net: Module,
+    prompt: Tensor,
+    seq_len: int,
+    gamma: int = 5,
+    temperature = 1.,
+    filter_thres = 0.9,
+    lenience = 1.
+):
+    """
+    eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
+    """
+
+    prompt_seq_len, out, device = prompt.shape[-1], prompt.clone(), prompt.device
+    sample_num_times = max(0, seq_len - prompt_seq_len)
+
+    assert prompt.shape[0] == 1, 'batched spec decoding not supported yet'
+
+    cache = None
+
+    num_steps = 0
+    total_accepted = 0
+
+    while out.shape[-1] < seq_len:
+
+        # predict with smaller network
+
+        all_small_logits = []
+        q_sampled_out = []
+
+        for _ in range(gamma):
+            small_logits, cache = small_net(out, cache = cache, return_cache = True)
+            small_logits = small_logits[:, -1]
+
+            small_logits = top_k(small_logits, thres = filter_thres)
+            all_small_logits.append(small_logits)
+
+            sample = gumbel_sample(small_logits, temperature = temperature, dim = -1)
+            out = torch.cat((out, sample[..., None]), dim = -1)
+
+            q_sampled_out.append(rearrange(sample, 'b -> b 1 1'))
+
+        q_sampled_out = torch.cat(q_sampled_out, dim = -2)
+        small_logits = torch.stack(all_small_logits, dim = -2)
+
+        # verify with larger network
+
+        logits, cache = net(out, cache = cache, return_cache = True, start_from_early_exit_hiddens = True)
+
+        logits = logits[..., -(gamma + 1):, :]
+        logits = top_k(logits, thres = filter_thres)
+
+        # prob and prob of small model (p(x) and q(x) in algorithm 1)
+
+        prob = safe_div(logits, temperature).softmax(dim = -1)
+        small_prob = safe_div(small_logits, temperature).softmax(dim = -1)
+
+        p, prob_next = prob[:, :-1], prob[:, -1]
+
+        p = p.gather(-1, q_sampled_out)
+        q = small_prob.gather(-1, q_sampled_out) * lenience
+
+        p, q = [rearrange(t, 'b n 1 -> b n') for t in (p, q)]
+
+        r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
+
+        accepted = find_first_true_index(r > (p / q))
+        n = accepted.item() # need to handle batched spec decoding
+
+        total_accepted += n
+        num_steps += 1
+
+        if n < gamma:
+            adjusted_prob = F.relu(prob[:, n] - small_prob[:, n])
+            prob_next = adjusted_prob / adjusted_prob.sum(dim = -1, keepdim = True)
+            out = out[:, :-(gamma - n)]
+
+        # adjust cache
+
+        next_seq_len = out.shape[-1]
+        cache = tuple(t[..., :next_seq_len, :] for t in cache)
 
         # sample the additional token
 
@@ -309,7 +400,7 @@ class Decoder(Module):
         return_cache = False,
         cache = None,
         return_early_exit_only = False,
-        start_from_early_exit_hiddens: Optional[Tensor] = None
+        start_from_early_exit_hiddens = False
     ):
         if return_loss:
             x, labels = x[:, :-1], x[:, 1:]
@@ -324,11 +415,12 @@ class Decoder(Module):
 
         cache_kvs = cache_embeds = None
 
-        if exists(cache):
+        if exists(cache) :
             cache_kvs, cache_embeds = cache
-            assert not self.training
-            num_tokens_keep = x.shape[-2] - cache_kvs.shape[-2]
-            x = x[:, -num_tokens_keep:]
+            if not start_from_early_exit_hiddens:
+                assert not self.training
+                num_tokens_keep = x.shape[-2] - cache_kvs.shape[-2]
+                x = x[:, -num_tokens_keep:]
 
         cache_kvs = default(cache_kvs, [])
         iter_cache_kvs = iter(cache_kvs)
@@ -338,10 +430,28 @@ class Decoder(Module):
         # handle if previous cached embedding layer from early exit layer passed in
 
         layers = self.layers
+
         if start_from_early_exit_hiddens:
-            assert not return_early_exit_only and exists(self.early_exit_layer)
-            layers = layers[self.early_exit_layer - 1:]
-            x = start_from_early_exit_hiddens
+            assert not return_early_exit_only and exists(cache_embeds)
+            early_exit_layer_index = self.early_exit_layer
+
+            cache_embeds_len = cache_embeds.shape[-2]
+
+            assert cache_embeds_len <= x.shape[-2]
+
+            early_exit_layers, layers = layers[:early_exit_layer_index], layers[early_exit_layer_index:]
+            x = x[:, cache_embeds_len:]
+
+            for ind, (attn, ff) in enumerate(early_exit_layers):
+                residual = x
+                attn_out, cached_kv = attn(x, cache = next(iter_cache_kvs, None))
+                x = residual + attn_out
+
+                new_cached_kvs.append(cached_kv)
+
+                x = ff(x) + x
+
+            x = torch.cat((cache_embeds, x), dim = -2)
 
         # main transformer body
 
