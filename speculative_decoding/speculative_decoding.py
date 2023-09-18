@@ -63,6 +63,8 @@ def base_decoding(
 
     return out[..., prompt_seq_len:]
 
+# speculative decoding functions
+
 def safe_div(num, den, eps = 1e-10):
     return num / max(den, eps)
 
@@ -254,7 +256,8 @@ class Decoder(Module):
         dim_head = 64,
         ff_mult = 4,
         weight_tie_layers = False,
-        ignore_index = -1
+        ignore_index = -1,
+        early_exit_layer = None
     ):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, dim)
@@ -279,6 +282,15 @@ class Decoder(Module):
             nn.Linear(dim, num_tokens, bias = False)
         )
 
+        self.early_exit_layer = early_exit_layer
+        self.to_early_exit_logits = None
+
+        if exists(early_exit_layer):
+            self.to_early_exit_logits = nn.Sequential(
+                RMSNorm(dim),
+                nn.Linear(dim, num_tokens, bias = False)
+            )
+
         self.ignore_index = ignore_index
 
     def forward(
@@ -286,7 +298,8 @@ class Decoder(Module):
         x,
         return_loss = False,
         return_cache = False,
-        cache = None
+        cache = None,
+        return_early_exit_only = False
     ):
         if return_loss:
             x, labels = x[:, :-1], x[:, 1:]
@@ -307,7 +320,11 @@ class Decoder(Module):
         cache = default(cache, [])
         iter_cache = iter(cache)
 
-        for attn, ff in self.layers:
+        early_exit_hiddens = None
+
+        for ind, (attn, ff) in enumerate(self.layers):
+            layer = ind + 1
+
             residual = x
             attn_out, cached_kv = attn(x, cache = next(iter_cache, None))
             x = residual + attn_out
@@ -316,9 +333,17 @@ class Decoder(Module):
 
             x = ff(x) + x
 
+            if layer == self.early_exit_layer:
+                early_exit_hiddens = x
+
+                if return_early_exit_only:
+                    break
+
         new_cached_kvs = torch.stack(new_cached_kvs)
 
-        logits = self.to_logits(x)
+        to_logits = self.to_logits if not return_early_exit_only else self.to_early_exit_logits
+
+        logits = to_logits(x)
 
         if not return_loss:
             if not return_cache:
@@ -326,8 +351,21 @@ class Decoder(Module):
 
             return logits, new_cached_kvs
 
-        return F.cross_entropy(
+        loss = F.cross_entropy(
             rearrange(logits, 'b n c -> b c n'),
             labels,
             ignore_index = self.ignore_index
         )
+
+        if not exists(self.to_early_exit_logits):
+            return loss
+
+        early_exit_logits = self.to_early_exit_logits(early_exit_hiddens)
+
+        early_exit_loss = F.cross_entropy(
+            rearrange(early_exit_logits, 'b n c -> b c n'),
+            labels,
+            ignore_index = self.ignore_index
+        )
+
+        return loss, early_exit_loss
