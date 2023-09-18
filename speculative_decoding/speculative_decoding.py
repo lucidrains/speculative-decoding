@@ -7,6 +7,7 @@ import torch.nn.functional as F
 
 from rotary_embedding_torch import RotaryEmbedding
 from beartype import beartype
+from beartype.typing import Optional
 
 from collections import namedtuple
 
@@ -307,7 +308,8 @@ class Decoder(Module):
         return_loss = False,
         return_cache = False,
         cache = None,
-        return_early_exit_only = False
+        return_early_exit_only = False,
+        start_from_early_exit_hiddens: Optional[Tensor] = None
     ):
         if return_loss:
             x, labels = x[:, :-1], x[:, 1:]
@@ -333,7 +335,17 @@ class Decoder(Module):
 
         early_exit_hiddens = None
 
-        for ind, (attn, ff) in enumerate(self.layers):
+        # handle if previous cached embedding layer from early exit layer passed in
+
+        layers = self.layers
+        if start_from_early_exit_hiddens:
+            assert not return_early_exit_only and exists(self.early_exit_layer)
+            layers = layers[self.early_exit_layer - 1:]
+            x = start_from_early_exit_hiddens
+
+        # main transformer body
+
+        for ind, (attn, ff) in enumerate(layers):
             layer = ind + 1
 
             residual = x
