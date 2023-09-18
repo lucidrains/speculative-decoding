@@ -144,8 +144,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 
-        small_model = partial(model, return_early_exit_only = True)
-        (spec_decode_sampled, num_accepted), spec_decode_elapsed = benchmark(speculative_decoding_with_same_model)(model,small_model, prompt, GENERATE_LENGTH, GAMMA)
+        (spec_decode_sampled, num_accepted), spec_decode_elapsed = benchmark(speculative_decoding_with_same_model)(model, prompt, GENERATE_LENGTH, GAMMA)
 
         base_decode_output = decode_tokens(sampled[0])
         spec_decode_output = decode_tokens(spec_decode_sampled[0])

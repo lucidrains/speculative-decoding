@@ -174,7 +174,6 @@ def speculative_decoding(
 @torch.no_grad()
 def speculative_decoding_with_same_model(
     net: Module,
-    small_net: Module,
     prompt: Tensor,
     seq_len: int,
     gamma: int = 5,
@@ -204,7 +203,7 @@ def speculative_decoding_with_same_model(
         q_sampled_out = []
 
         for _ in range(gamma):
-            small_logits, cache = small_net(out, cache = cache, return_cache = True)
+            small_logits, cache = net(out, cache = cache, return_cache = True, return_early_exit_only = True)
             small_logits = small_logits[:, -1]
 
             small_logits = top_k(small_logits, thres = filter_thres)
