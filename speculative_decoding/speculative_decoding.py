@@ -8,7 +8,13 @@ import torch.nn.functional as F
 from rotary_embedding_torch import RotaryEmbedding
 from beartype import beartype
 
+from collections import namedtuple
+
 from einops import rearrange
+
+# constants
+
+Cache = namedtuple('Cache', ['cached_kvs', 'embeds'])
 
 # helper functions
 
@@ -314,13 +320,16 @@ class Decoder(Module):
 
         # if cache passed in, just use the last token
 
+        cache_kvs = cache_embeds = None
+
         if exists(cache):
+            cache_kvs, cache_embeds = cache
             assert not self.training
-            num_tokens_keep = x.shape[-2] - cache.shape[-2]
+            num_tokens_keep = x.shape[-2] - cache_kvs.shape[-2]
             x = x[:, -num_tokens_keep:]
 
-        cache = default(cache, [])
-        iter_cache = iter(cache)
+        cache_kvs = default(cache_kvs, [])
+        iter_cache_kvs = iter(cache_kvs)
 
         early_exit_hiddens = None
 
@@ -328,7 +337,7 @@ class Decoder(Module):
             layer = ind + 1
 
             residual = x
-            attn_out, cached_kv = attn(x, cache = next(iter_cache, None))
+            attn_out, cached_kv = attn(x, cache = next(iter_cache_kvs, None))
             x = residual + attn_out
 
             new_cached_kvs.append(cached_kv)
@@ -354,7 +363,10 @@ class Decoder(Module):
             if not return_cache:
                 return logits
 
-            return logits, new_cached_kvs
+            if exists(cache_embeds):
+                x = torch.cat((cache_embeds, x), dim = -2)
+
+            return logits, Cache(new_cached_kvs, x)
 
         loss = F.cross_entropy(
             rearrange(logits, 'b n c -> b c n'),
