@@ -257,7 +257,8 @@ class Decoder(Module):
         ff_mult = 4,
         weight_tie_layers = False,
         ignore_index = -1,
-        early_exit_layer = None
+        early_exit_layer = None,
+        detach_early_exit_hiddens = False
     ):
         super().__init__()
         self.token_emb = nn.Embedding(num_tokens, dim)
@@ -282,6 +283,7 @@ class Decoder(Module):
             nn.Linear(dim, num_tokens, bias = False)
         )
 
+        self.detach_early_exit_hiddens = detach_early_exit_hiddens
         self.early_exit_layer = early_exit_layer
         self.to_early_exit_logits = None
 
@@ -335,6 +337,9 @@ class Decoder(Module):
 
             if layer == self.early_exit_layer:
                 early_exit_hiddens = x
+
+                if self.detach_early_exit_hiddens:
+                    early_exit_hiddens = early_exit_hiddens.detach()
 
                 if return_early_exit_only:
                     break

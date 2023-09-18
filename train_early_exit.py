@@ -31,6 +31,7 @@ GENERATE_EVERY = 500
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
 GAMMA = 5
+EARLY_EXIT_LOSS_WEIGHT = 1.
 
 DEVICE_STR = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -113,7 +114,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         loss, small_loss = model(data, return_loss = True)
 
-        ((loss + small_loss) / GRAD_ACCUM_EVERY).backward()
+        ((loss + small_loss * EARLY_EXIT_LOSS_WEIGHT) / GRAD_ACCUM_EVERY).backward()
 
     print(f"training loss: {loss.item():.3f}")
     print(f"training small loss: {small_loss.item():.3f}")
