@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'speculative-decoding',
   packages = find_packages(exclude=[]),
-  version = '0.0.8',
+  version = '0.0.9',
   license='MIT',
   description = 'Speculative Decoding',
   author = 'Phil Wang',

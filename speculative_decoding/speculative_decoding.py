@@ -115,16 +115,15 @@ def speculative_decoding(
     gamma: int = 5,
     temperature = 1.,
     filter_thres = 0.9,
-    lenience = 1.
+    lenience = 1.,
+    pad_id = 0
 ):
     """
     eq. algorithm 1 in paper https://arxiv.org/abs/2211.17192
     """
 
-    prompt_seq_len, out, device = prompt.shape[-1], prompt.clone(), prompt.device
+    batch, prompt_seq_len, out, device = *prompt.shape, prompt.clone(), prompt.device
     sample_num_times = max(0, seq_len - prompt_seq_len)
-
-    assert prompt.shape[0] == 1, 'batched spec decoding not supported yet'
 
     cache = None
     small_cache = None
@@ -132,7 +131,10 @@ def speculative_decoding(
     num_steps = 0
     total_accepted = 0
 
-    while out.shape[-1] < seq_len:
+    batch_range = torch.arange(batch, device = device, dtype = torch.long)[..., None]
+    seq_lens = torch.full((batch,), prompt_seq_len, device = device, dtype = torch.long)
+
+    while (seq_lens < seq_len).any():
 
         # predict with smaller network
 
@@ -140,7 +142,13 @@ def speculative_decoding(
         q_sampled_out = []
 
         for _ in range(gamma):
-            small_logits, small_cache = small_net(out, cache = small_cache, return_cache = True)
+            small_logits, small_cache = small_net(
+                out,
+                seq_start_pos = out.shape[-1] - seq_lens,
+                cache = small_cache,
+                return_cache = True
+            )
+
             small_logits = small_logits[:, -1]
 
             small_logits = top_k(small_logits, thres = filter_thres)
@@ -148,6 +156,7 @@ def speculative_decoding(
 
             sample = gumbel_sample(small_logits, temperature = temperature, dim = -1)
             out = torch.cat((out, sample[..., None]), dim = -1)
+            seq_lens += 1
 
             q_sampled_out.append(rearrange(sample, 'b -> b 1 1'))
 
@@ -156,7 +165,12 @@ def speculative_decoding(
 
         # verify with larger network
 
-        logits, cache = net(out, cache = cache, return_cache = True)
+        logits, cache = net(
+            out,
+            seq_start_pos = out.shape[-1] - seq_lens,
+            cache = cache,
+            return_cache = True
+        )
 
         logits = logits[..., -(gamma + 1):, :]
         logits = top_k(logits, thres = filter_thres)
@@ -176,27 +190,62 @@ def speculative_decoding(
         r = random_uniform = torch.zeros_like(q).float().uniform_(0, 1)
 
         accepted = find_first_true_index(r > (p / q))
-        n = accepted.item() # need to handle batched spec decoding
 
-        total_accepted += n
+        total_accepted += accepted.float().mean()
         num_steps += 1
 
-        if n < gamma:
-            adjusted_prob = F.relu(prob[:, n] - small_prob[:, n])
-            prob_next = adjusted_prob / adjusted_prob.sum(dim = -1, keepdim = True)
-            out = out[:, :-(gamma - n)]
+        num_rejected = gamma - accepted
+        has_rejected = num_rejected > 0
 
-        # adjust cache
+        accepted = rearrange(accepted, 'b -> b 1')
+        adjusted_prob = F.relu(prob[batch_range, accepted] - small_prob[batch_range, accepted])
+        adjusted_prob = adjusted_prob / adjusted_prob.sum(dim = -1, keepdim = True)
+        adjusted_prob = rearrange(adjusted_prob, 'b 1 d -> b d')
 
-        next_seq_len = out.shape[-1]
-        cache = tuple(t[..., :next_seq_len, :] for t in cache)
-        small_cache = tuple(t[..., :next_seq_len, :] for t in small_cache)
+        prob_next = torch.where(
+            rearrange(has_rejected, '... -> ... 1'),
+            adjusted_prob,
+            prob_next
+        )
 
-        # sample the additional token
+        # do a bunch of slicing and align everything to the right, including kv caches
+
+        max_num_rejected = num_rejected.amax()
+        seq_arange = torch.arange(out.shape[-1], device = device, dtype = torch.long)
+        seq_offset_indices = seq_arange + (max_num_rejected - num_rejected)[..., None]
+
+        out = F.pad(out, (0, max_num_rejected), value = pad_id)
+        out = out[batch_range, seq_offset_indices]
+
+        cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in cache)
+        small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in small_cache)
+
+        cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in cache)
+        small_cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in small_cache)
+
+        cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
+        small_cache = tuple(t[batch_range, seq_offset_indices] for t in small_cache)
+
+        cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in cache)
+        small_cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in small_cache)
+
+        seq_lens -= num_rejected
+
+        # sample the additional token, one of the tricks in the paper to better bound the worst case
 
         next_token = torch.multinomial(prob_next, 1)
 
         out = torch.cat((out, next_token), dim = -1)
+        seq_lens += 1
+
+    # now left align
+
+    num_pad_left = out.shape[-1] - seq_lens
+    max_pad_left = num_pad_left.amax()
+    out = F.pad(out, (0, max_pad_left), value = pad_id)
+
+    seq_len_range = torch.arange(seq_len, device = device, dtype = torch.long)
+    out = out[batch_range, seq_len_range + num_pad_left[..., None]]
 
     return out[..., prompt_seq_len:], total_accepted / num_steps
 
@@ -436,7 +485,7 @@ class Decoder(Module):
         x,
         return_loss = False,
         return_cache = False,
-        seq_start_pos_offset = None,
+        seq_start_pos = None,
         cache = None,
         early_exit_cache = None,
         return_early_exit_only = False,
@@ -450,14 +499,14 @@ class Decoder(Module):
         # handle seq start pos offset
 
         self_attn_kv_mask = None
-        if exists(seq_start_pos_offset):
+        if exists(seq_start_pos):
             batch, seq_len = x.shape[:2]
             seq_range = torch.arange(seq_len, device = x.device, dtype = torch.long)
-            self_attn_kv_mask = seq_range >= seq_start_pos_offset[..., None]
+            self_attn_kv_mask = seq_range >= seq_start_pos[..., None]
 
         # relative positional encoding
 
-        rotary_emb = self.rotary_emb(x.shape[-2], offset = seq_start_pos_offset)
+        rotary_emb = self.rotary_emb(x.shape[-2], offset = seq_start_pos)
 
         # setup cache
 
@@ -468,8 +517,10 @@ class Decoder(Module):
         if exists(cache):
             cache_kvs, cache_embeds = cache
 
-        cache_kvs = default(cache_kvs, [])
-        iter_cache_kvs = iter(cache_kvs)
+        if exists(cache_kvs):
+            iter_cache_kvs = iter(cache_kvs.unbind(dim = 1))
+        else:
+            iter_cache_kvs = iter([])
 
         # handle if previous cached embedding layer from early exit layer passed in
 
@@ -503,7 +554,7 @@ class Decoder(Module):
 
         # if cache passed in, just use the last token
 
-        if exists(cache) :
+        if exists(cache):
             num_tokens_keep = x.shape[-2] - cache_kvs.shape[-2]
             x = x[:, -num_tokens_keep:]
 
@@ -540,7 +591,7 @@ class Decoder(Module):
                 if return_early_exit_only:
                     break
 
-        new_cached_kvs = torch.stack(new_cached_kvs)
+        new_cached_kvs = torch.stack(new_cached_kvs, dim = 1)
 
         to_logits = self.to_logits if not return_early_exit_only else self.to_early_exit_logits
 
