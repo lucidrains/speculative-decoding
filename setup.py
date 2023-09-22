@@ -3,7 +3,7 @@ from setuptools import setup, find_packages
 setup(
   name = 'speculative-decoding',
   packages = find_packages(exclude=[]),
-  version = '0.0.7',
+  version = '0.0.8',
   license='MIT',
   description = 'Speculative Decoding',
   author = 'Phil Wang',
@@ -19,7 +19,6 @@ setup(
   install_requires=[
     'beartype',
     'einops>=0.6.1',
-    'rotary-embedding-torch>=0.3.0',
     'torch>=1.12',
   ],
   classifiers=[

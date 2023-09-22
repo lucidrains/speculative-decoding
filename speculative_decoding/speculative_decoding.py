@@ -43,6 +43,35 @@ def top_k(logits, thres = 0.9):
     probs.scatter_(-1, ind, val)
     return probs
 
+# rotary embeddings
+
+class RotaryEmbedding(nn.Module):
+    def __init__(self, dim):
+        super().__init__()
+        inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
+        self.register_buffer("inv_freq", inv_freq)
+
+    def forward(self, seq_len, offset = None):
+        t = torch.arange(seq_len, device = self.inv_freq.device).type_as(self.inv_freq)
+        t = rearrange(t, 'n -> 1 n')
+
+        if exists(offset):
+            t = t + offset[..., None]
+
+        freqs = torch.einsum('b n , d -> b n d', t, self.inv_freq)
+        freqs = torch.cat((freqs, freqs), dim = -1)
+        return freqs
+
+def rotate_half(x):
+    x1, x2 = x.chunk(2, dim=-1)
+    return torch.cat((-x2, x1), dim=-1)
+
+def apply_rotary_pos_emb(pos, t):
+    seq_len = t.shape[-2]
+    pos = rearrange(pos, 'b n d -> b 1 n d')
+    pos = pos[..., -seq_len:, :]
+    return t * pos.cos() + rotate_half(t) * pos.sin()
+
 # different decoding strategies
 
 @torch.no_grad()
@@ -282,7 +311,6 @@ class CausalAttention(Module):
         self,
         dim,
         *,
-        rotary_emb: RotaryEmbedding,
         dim_head = 64,
         heads = 8,
     ):
@@ -292,7 +320,6 @@ class CausalAttention(Module):
         dim_inner = dim_head * heads
 
         self.norm = RMSNorm(dim)
-        self.rotary_emb = rotary_emb
 
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias = False)
         self.to_out = nn.Linear(dim_inner, dim, bias = False)
@@ -300,7 +327,9 @@ class CausalAttention(Module):
     def forward(
         self,
         x,
-        cache = None
+        cache = None,
+        context_mask = None,
+        rotary_emb = None
     ):
         h, device = self.heads, x.device
 
@@ -315,7 +344,9 @@ class CausalAttention(Module):
 
         cached_kv = torch.stack((k, v))
 
-        q, k = self.rotary_emb.rotate_queries_with_cached_keys(q, k)
+        if exists(rotary_emb):
+            q = apply_rotary_pos_emb(rotary_emb, q)
+            k = apply_rotary_pos_emb(rotary_emb, k)
 
         sim = einsum('b h i d, b h j d -> b h i j', q, k) * self.scale
 
@@ -323,6 +354,10 @@ class CausalAttention(Module):
         causal_mask = torch.ones((i, j), device = device, dtype = torch.bool).triu(j - i + 1)
 
         sim = sim.masked_fill(causal_mask, -torch.finfo(sim.dtype).max)
+
+        if exists(context_mask):
+            context_mask = rearrange(context_mask, 'b j -> b 1 1 j')
+            sim = sim.masked_fill(~context_mask, -torch.finfo(sim.dtype).max)
 
         attn = sim.softmax(dim = -1)
 
@@ -364,11 +399,11 @@ class Decoder(Module):
 
         self.layers = ModuleList([])
 
-        rotary_emb = RotaryEmbedding(dim = dim_head)
+        self.rotary_emb = RotaryEmbedding(dim = dim_head)
 
         for _ in range(depth):
             self.layers.append(ModuleList([
-                CausalAttention(dim = dim, dim_head = dim_head, heads = heads, rotary_emb = rotary_emb),
+                CausalAttention(dim = dim, dim_head = dim_head, heads = heads),
                 FeedForward(dim = dim, mult = ff_mult)
             ]))
 
@@ -401,6 +436,7 @@ class Decoder(Module):
         x,
         return_loss = False,
         return_cache = False,
+        seq_start_pos_offset = None,
         cache = None,
         early_exit_cache = None,
         return_early_exit_only = False,
@@ -410,6 +446,18 @@ class Decoder(Module):
             x, labels = x[:, :-1], x[:, 1:]
 
         x = self.token_emb(x)
+
+        # handle seq start pos offset
+
+        self_attn_kv_mask = None
+        if exists(seq_start_pos_offset):
+            batch, seq_len = x.shape[:2]
+            seq_range = torch.arange(seq_len, device = x.device, dtype = torch.long)
+            self_attn_kv_mask = seq_range >= seq_start_pos_offset[..., None]
+
+        # relative positional encoding
+
+        rotary_emb = self.rotary_emb(x.shape[-2], offset = seq_start_pos_offset)
 
         # setup cache
 
@@ -444,7 +492,7 @@ class Decoder(Module):
 
             for ind, (attn, ff) in enumerate(early_exit_layers):
                 residual = x
-                attn_out, cached_kv = attn(x, cache = next(iter_early_cache_kvs, None))
+                attn_out, cached_kv = attn(x, context_mask = self_attn_kv_mask, rotary_emb = rotary_emb, cache = next(iter_early_cache_kvs, None))
                 x = residual + attn_out
 
                 new_cached_kvs.append(cached_kv)
@@ -467,7 +515,7 @@ class Decoder(Module):
             layer = ind + 1
 
             residual = x
-            attn_out, cached_kv = attn(x, cache = next(iter_cache_kvs, None))
+            attn_out, cached_kv = attn(x, rotary_emb = rotary_emb, cache = next(iter_cache_kvs, None))
             x = residual + attn_out
 
             new_cached_kvs.append(cached_kv)
@@ -482,7 +530,7 @@ class Decoder(Module):
 
                 for early_exit_attn, early_exit_ff in self.early_exit_transformer_blocks:
                     residual = x
-                    attn_out, cached_kv = early_exit_attn(x, cache = next(iter_cache_kvs, None))
+                    attn_out, cached_kv = early_exit_attn(x, rotary_emb = rotary_emb, cache = next(iter_cache_kvs, None))
                     x = residual + attn_out
 
                     new_cached_kvs.append(cached_kv)
