@@ -208,20 +208,21 @@ def speculative_decoding(
         seq_arange = torch.arange(out.shape[-1], device = device, dtype = torch.long)
         seq_offset_indices = seq_arange + (max_num_rejected - num_rejected)[..., None]
 
-        out = F.pad(out, (0, max_num_rejected), value = pad_id)
-        out = out[batch_range, seq_offset_indices]
+        if batch > 1:
+            out = F.pad(out, (0, max_num_rejected), value = pad_id)
+            out = out[batch_range, seq_offset_indices]
 
-        cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in cache)
-        small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in small_cache)
+            cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in cache)
+            small_cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in small_cache)
 
-        cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in cache)
-        small_cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in small_cache)
+            cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in cache)
+            small_cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in small_cache)
 
-        cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
-        small_cache = tuple(t[batch_range, seq_offset_indices] for t in small_cache)
+            cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
+            small_cache = tuple(t[batch_range, seq_offset_indices] for t in small_cache)
 
-        cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in cache)
-        small_cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in small_cache)
+            cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in cache)
+            small_cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in small_cache)
 
         seq_lens -= num_rejected
 
