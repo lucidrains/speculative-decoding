@@ -13,8 +13,9 @@ Also have a few ideas of my own that I will try and share in this repository, if
 - [x] figure out batched spec decoding - different rows may advance at different rates
 - [x] further optimize batched spec decoding, as losing some performance from all the indexing - seems like it will take some work for this technique to be actually usable
 
-- [ ] dedicate a morning to microoptimizations
 - [ ] build out the prophet net idea, but use the same scheme as megabyte, the hierarchical transformer, for the prophet head. this hierarchical transformer would then use the cached embedding from the large model (since we are caching the embeddings)
+- [ ] dedicate a morning to microoptimizations
+- [ ] make batched spec decoding work with early exit strategy
 
 ## Citations
 
