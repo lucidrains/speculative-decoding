@@ -208,6 +208,9 @@ def speculative_decoding(
         seq_arange = torch.arange(out.shape[-1], device = device, dtype = torch.long)
         seq_offset_indices = seq_arange + (max_num_rejected - num_rejected)[..., None]
 
+        seq_lens -= num_rejected
+        max_seq_len = seq_lens.amax()
+
         if batch > 1:
             out = F.pad(out, (0, max_num_rejected), value = pad_id)
             out = out[batch_range, seq_offset_indices]
@@ -224,7 +227,10 @@ def speculative_decoding(
             cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in cache)
             small_cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in small_cache)
 
-        seq_lens -= num_rejected
+            if out.shape[-1] > max_seq_len:
+                out = out[:, -max_seq_len:]
+                cache = tuple(t[..., -max_seq_len:, :] for t in cache)
+                small_cache = tuple(t[..., -max_seq_len:, :] for t in small_cache)
 
         # sample the additional token, one of the tricks in the paper to better bound the worst case
 
