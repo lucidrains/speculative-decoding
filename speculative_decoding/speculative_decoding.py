@@ -51,14 +51,9 @@ class RotaryEmbedding(nn.Module):
         inv_freq = 1.0 / (10000 ** (torch.arange(0, dim, 2).float() / dim))
         self.register_buffer("inv_freq", inv_freq)
 
-    def forward(self, seq_len, offset = None):
+    def forward(self, seq_len):
         t = torch.arange(seq_len, device = self.inv_freq.device).type_as(self.inv_freq)
-        t = rearrange(t, 'n -> 1 n')
-
-        if exists(offset):
-            t = t + offset[..., None]
-
-        freqs = torch.einsum('b n , d -> b n d', t, self.inv_freq)
+        freqs = einsum('i, j -> i j', t, self.inv_freq)
         freqs = torch.cat((freqs, freqs), dim = -1)
         return freqs
 
@@ -68,8 +63,7 @@ def rotate_half(x):
 
 def apply_rotary_pos_emb(pos, t):
     seq_len = t.shape[-2]
-    pos = rearrange(pos, 'b n d -> b 1 n d')
-    pos = pos[..., -seq_len:, :]
+    pos = pos[-seq_len:, :]
     return t * pos.cos() + rotate_half(t) * pos.sin()
 
 # different decoding strategies
@@ -387,11 +381,11 @@ class CausalAttention(Module):
         q, k, v = rearrange(self.to_qkv(x), 'b n (qkv h d) -> qkv b h n d', qkv = 3, h = h)
 
         if exists(cache):
-            ck, cv = cache
+            ck, cv = cache.unbind(dim = 1)
             k = torch.cat((ck, k), dim = -2)
             v = torch.cat((cv, v), dim = -2)
 
-        cached_kv = torch.stack((k, v))
+        cached_kv = torch.stack((k, v), dim = 1)
 
         if exists(rotary_emb):
             q = apply_rotary_pos_emb(rotary_emb, q)
@@ -506,7 +500,7 @@ class Decoder(Module):
 
         # relative positional encoding
 
-        rotary_emb = self.rotary_emb(x.shape[-2], offset = seq_start_pos)
+        rotary_emb = self.rotary_emb(x.shape[-2])
 
         # setup cache
 
