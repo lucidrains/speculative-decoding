@@ -267,8 +267,6 @@ def speculative_decoding_with_same_model(
     prompt_seq_len, out, device = prompt.shape[-1], prompt.clone(), prompt.device
     sample_num_times = max(0, seq_len - prompt_seq_len)
 
-    assert prompt.shape[0] == 1, 'batched spec decoding not supported yet'
-
     cache = None
     small_cache = None
 
@@ -540,7 +538,10 @@ class Decoder(Module):
             early_exit_layers, layers = layers[:early_exit_layer_index], layers[early_exit_layer_index:]
             x = x[:, cache_embeds_len:]
 
-            iter_early_cache_kvs = iter(early_cache_kvs)
+            if exists(early_cache_kvs):
+                iter_early_cache_kvs = iter(early_cache_kvs.unbind(dim = 1))
+            else:
+                iter_early_cache_kvs = iter([])
 
             for ind, (attn, ff) in enumerate(early_exit_layers):
                 residual = x
