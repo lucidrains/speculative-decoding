@@ -388,8 +388,8 @@ class Decoder(Module):
         has_start_tokens = exists(start_tokens)
 
         if return_loss:
-            label_start_index = (1 if not has_start_tokens else 0)
-            x, labels = x[:, :-1], x[:, label_start_index:]
+            start_index = (1 if has_start_tokens else 0)
+            x, labels = x[:, start_index:-1], x[:, 1:]
 
         x = self.token_emb(x)
 

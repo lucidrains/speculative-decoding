@@ -135,7 +135,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
     optim.step()
     optim.zero_grad()
 
-    if i % GENERATE_EVERY == 0:
+    if False and i % GENERATE_EVERY == 0:
         model.eval()
 
         inp = random.choice(val_dataset)[:PRIME_LENGTH]
