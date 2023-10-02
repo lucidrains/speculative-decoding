@@ -15,6 +15,9 @@ Also have a few ideas of my own that I will try and share in this repository, if
 - [x] make batched spec decoding work with early exit strategy
 
 - [ ] build out the prophet net idea, but use the same scheme as megabyte, the hierarchical transformer, for the prophet head. this hierarchical transformer would then use the cached embedding from the large model (since we are caching the embeddings)
+    - [x] complete prophet net with hierarchical transformer training
+    - [ ] complete the spec decoding algorithm using trained prophet net transformer
+
 - [ ] dedicate a morning to microoptimizations
 
 ## Citations
