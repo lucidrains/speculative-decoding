@@ -6,6 +6,10 @@ Explorations into some recent techniques surrounding <a href="https://arxiv.org/
 
 Also have a few ideas of my own that I will try and share in this repository, if they work. The goal is to initially use it to speed up the text-to-semantic decoder in <a href="https://github.com/lucidrains/spear-tts-pytorch">Spear-TTS</a>
 
+## Appreciation
+
+- <a href="https://stability.ai/">StabilityAI</a> and <a href="https://huggingface.co/">🤗 Huggingface</a> for the generous sponsorship, as well as my other sponsors, for affording me the independence to open source current artificial intelligence techniques.
+
 ## Todo
 
 - [x] in early exit scheme, cache the hidden layer during spec decoding, as small and large models share the same first few layers
