@@ -75,8 +75,8 @@ model = Decoder(
 
 prophet = Decoder(
     num_tokens = 256,
-    dim = 128,
-    depth = 4
+    dim = 512,
+    depth = 2
 )
 
 model_and_prophet = ModelWithProphetWrapper(

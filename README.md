@@ -18,6 +18,7 @@ Also have a few ideas of my own that I will try and share in this repository, if
     - [x] complete prophet net with hierarchical transformer training
     - [ ] complete the spec decoding algorithm using trained prophet net transformer
 
+- [ ] for early exit strategy, try randomly summing last cached embedding back to the same model (a la alphafold2 recycling), randomly cropped along sequence length, and train early exit loss this way. see if one can improve the gamma this way
 - [ ] dedicate a morning to microoptimizations
 
 ## Citations
