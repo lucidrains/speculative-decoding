@@ -113,12 +113,12 @@ train_loader = cycle(DataLoader(train_dataset, batch_size=BATCH_SIZE))
 
 # optimizer
 
-optim = Adam(model.parameters(), lr = LEARNING_RATE)
+optim = Adam(model_and_prophet.parameters(), lr = LEARNING_RATE)
 
 # training
 
 for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
-    model.train()
+    model_and_prophet.train()
 
     for _ in range(GRAD_ACCUM_EVERY):
         data = next(train_loader)
