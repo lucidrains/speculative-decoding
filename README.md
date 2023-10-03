@@ -20,6 +20,8 @@ Also have a few ideas of my own that I will try and share in this repository, if
 - [x] complete speculative sampling with prophet transformer idea - seems to work well! 🙌
 
 - [ ] get some wandb charts and see how prophet compares with early exit strategy, share on repository
+- [ ] also run experiments to see if prophet transformer brings any benefit to main model loss. original prophet paper only did a simple linear projection
+
 - [ ] for early exit strategy, try randomly summing last cached embedding back to the same model (a la alphafold2 recycling), randomly cropped along sequence length, and train early exit loss this way. see if one can improve the gamma this way
 - [ ] dedicate a morning to microoptimizations
 
