@@ -32,6 +32,7 @@ GENERATE_LENGTH = 512
 SEQ_LEN = 512
 GAMMA = 5
 EARLY_EXIT_LOSS_WEIGHT = 1.
+TRAIN_PROPHET = True
 
 DEVICE_STR = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -113,7 +114,9 @@ train_loader = cycle(DataLoader(train_dataset, batch_size=BATCH_SIZE))
 
 # optimizer
 
-optim = Adam(model_and_prophet.parameters(), lr = LEARNING_RATE)
+params = model_and_prophet.parameters() if TRAIN_PROPHET else model.parameters()
+
+optim = Adam(params, lr = LEARNING_RATE)
 
 # training
 
