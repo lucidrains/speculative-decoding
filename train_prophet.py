@@ -27,7 +27,7 @@ BATCH_SIZE = 4
 GRAD_ACCUM_EVERY = 4
 LEARNING_RATE = 1e-4
 PRIME_LENGTH = 128
-GENERATE_EVERY = 10
+GENERATE_EVERY = 100
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
 GAMMA = 5
@@ -135,8 +135,8 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
     optim.step()
     optim.zero_grad()
 
-    if False and i % GENERATE_EVERY == 0:
-        model.eval()
+    if i % GENERATE_EVERY == 0:
+        model_and_prophet.eval()
 
         inp = random.choice(val_dataset)[:PRIME_LENGTH]
         prime = decode_tokens(inp)
@@ -146,7 +146,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 
-        (spec_decode_sampled, num_accepted), spec_decode_elapsed = benchmark(speculative_decoding_with_prophet_model)(model, prompt, GENERATE_LENGTH, GAMMA)
+        (spec_decode_sampled, num_accepted), spec_decode_elapsed = benchmark(speculative_decoding_with_prophet_model)(model_and_prophet, prompt, GENERATE_LENGTH, GAMMA)
 
         base_decode_output = decode_tokens(sampled[0])
         spec_decode_output = decode_tokens(spec_decode_sampled[0])

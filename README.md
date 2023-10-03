@@ -17,11 +17,9 @@ Also have a few ideas of my own that I will try and share in this repository, if
 - [x] figure out batched spec decoding - different rows may advance at different rates
 - [x] further optimize batched spec decoding, as losing some performance from all the indexing - seems like it will take some work for this technique to be actually usable
 - [x] make batched spec decoding work with early exit strategy
+- [x] complete speculative sampling with prophet transformer idea - seems to work well! 🙌
 
-- [ ] build out the prophet net idea, but use the same scheme as megabyte, the hierarchical transformer, for the prophet head. this hierarchical transformer would then use the cached embedding from the large model (since we are caching the embeddings)
-    - [x] complete prophet net with hierarchical transformer training
-    - [ ] complete the spec decoding algorithm using trained prophet net transformer
-
+- [ ] get some wandb charts and see how prophet compares with early exit strategy, share on repository
 - [ ] for early exit strategy, try randomly summing last cached embedding back to the same model (a la alphafold2 recycling), randomly cropped along sequence length, and train early exit loss this way. see if one can improve the gamma this way
 - [ ] dedicate a morning to microoptimizations
 
