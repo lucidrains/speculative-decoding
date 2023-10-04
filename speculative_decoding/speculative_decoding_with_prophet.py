@@ -301,15 +301,17 @@ class ModelWithProphetWrapper(Module):
         model: Decoder,
         prophet: Decoder,
         prophet_train_length = 8,  # should be greater than spec decoding gamma, as main model cache embedding is one step behind
-        detach_model_embed_for_prophet = False
+        detach_model_embed_for_prophet = False,
+        num_leading_start_tokens = 1
     ):
         super().__init__()
         self.model = model
         self.prophet = prophet
 
         model_prophet_same_dim = model.dim == prophet.dim
-        self.to_prophet_start_token = nn.Identity() if model_prophet_same_dim else nn.Sequential(RMSNorm(model.dim), nn.Linear(model.dim, prophet.dim, bias = False))
+        self.to_prophet_start_token = nn.Identity() if model_prophet_same_dim else nn.Linear(model.dim, prophet.dim, bias = False)
 
+        self.num_leading_start_tokens = num_leading_start_tokens
         self.prophet_train_length = prophet_train_length
         self.detach_model_embed_for_prophet = detach_model_embed_for_prophet
 
