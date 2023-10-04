@@ -412,8 +412,8 @@ def speculative_decoding_with_prophet_model(
 
     # sample the first token from the main model
 
-    for _ in range(num_start_tokens):
-        logits, cache = model(out, return_cache = True)
+    for _ in range(max(1, num_start_tokens - prompt_seq_len)):
+        logits, cache = model(out, cache = cache, return_cache = True)
         logits = logits[:, -1:]
         logits = top_k(logits, thres = filter_thres)
         sample = gumbel_sample(logits, temperature = temperature, dim = -1)

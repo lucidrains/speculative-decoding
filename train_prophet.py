@@ -76,7 +76,7 @@ model = Decoder(
 
 prophet = Decoder(
     num_tokens = 256,
-    dim = 256,
+    dim = 512,
     depth = 2
 )
 
@@ -84,7 +84,7 @@ model_and_prophet = ModelWithProphetWrapper(
     model,
     prophet,
     prophet_train_length = GAMMA + 2,
-    num_leading_start_tokens = 1,
+    num_leading_start_tokens = 2,
     detach_model_embed_for_prophet = False   # train end to end, shouldn't hurt (although benefits is dubious) given ProphetNet paper - of course, trying to get to the bottom of the benefits in spec decoding setting here
 ).to(device)
 
