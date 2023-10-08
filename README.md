@@ -68,3 +68,14 @@ Also have a few ideas of my own that I will try and share in this repository, if
     url     = {https://api.semanticscholar.org/CorpusID:210164665}
 }
 ```
+
+```bibtex
+@article{Zhang2023DraftV,
+    title     = {Draft \& Verify: Lossless Large Language Model Acceleration via Self-Speculative Decoding},
+    author    = {Jinchao Zhang and Jue Wang and Huan Li and Lidan Shou and Ke Chen and Gang Chen and Sharad Mehrotra},
+    journal   = {ArXiv},
+    year      = {2023},
+    volume    = {abs/2309.08168},
+    url       = {https://api.semanticscholar.org/CorpusID:262013673}
+}
+```
