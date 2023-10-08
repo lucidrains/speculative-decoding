@@ -79,3 +79,14 @@ Also have a few ideas of my own that I will try and share in this repository, if
     url       = {https://api.semanticscholar.org/CorpusID:262013673}
 }
 ```
+
+```bibtex
+@misc{medusa,
+    author     = {Tianle Cai and Yuhong Li and Zhengyang Geng and Hongwu Peng and Tri Dao},
+    title      = {Medusa: Simple Framework for Accelerating LLM Generation with Multiple Decoding Heads},
+    year       = {2023},
+    publisher  = {GitHub},
+    journal    = {GitHub repository},
+    howpublished = {\url{https://github.com/FasterDecoding/Medusa}},
+}
+```
