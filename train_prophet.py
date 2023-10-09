@@ -31,7 +31,6 @@ GENERATE_EVERY = 100
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
 GAMMA = 5
-EARLY_EXIT_LOSS_WEIGHT = 1.
 TRAIN_PROPHET = True
 
 DEVICE_STR = 'cuda' if torch.cuda.is_available() else 'cpu'
