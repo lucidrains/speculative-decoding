@@ -234,6 +234,10 @@ def speculative_decoding(
                 cache = tuple(t[..., left_index:, :] for t in cache)
                 small_cache = tuple(t[..., left_index:, :] for t in small_cache)
 
+        else:
+            # if batch size of 1, just slice to be equal to the lone int in seq_lens
+            out = out[..., :seq_lens.item()]
+
         # sample the additional token, one of the tricks in the paper to better bound the worst case
 
         next_token = torch.multinomial(prob_next, 1)
@@ -388,6 +392,9 @@ def speculative_decoding_with_same_model(
                 out = out[:, left_index:]
                 cache = tuple(t[..., left_index:, :] for t in cache)
                 small_cache = tuple(t[..., left_index:, :] for t in small_cache)
+        else:
+            # if batch size of 1, just slice to be equal to the lone int in seq_lens
+            out = out[..., :seq_lens.item()]
 
         # sample the additional token, one of the tricks in the paper to better bound the worst case
 
