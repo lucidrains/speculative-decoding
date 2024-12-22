@@ -130,8 +130,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         (total_loss / GRAD_ACCUM_EVERY).backward()
 
-    print(f"training loss: {loss.item():.3f}")
-    print(f"training prophet loss: {prophet_loss.item():.3f}")
+    print(f"loss: {loss.item():.3f}\tprophet loss: {prophet_loss.item():.3f}")
 
     torch.nn.utils.clip_grad_norm_(model_and_prophet.parameters(), 0.5)
 

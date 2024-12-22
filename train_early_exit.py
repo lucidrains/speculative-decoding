@@ -116,8 +116,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
 
         ((loss + small_loss * EARLY_EXIT_LOSS_WEIGHT) / GRAD_ACCUM_EVERY).backward()
 
-    print(f"training loss: {loss.item():.3f}")
-    print(f"training small loss: {small_loss.item():.3f}")
+    print(f"loss: {loss.item():.3f}\tsmall loss: {small_loss.item():.3f}")
 
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
 
@@ -130,8 +129,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
             valid_data = next(val_loader)
 
             loss, small_loss = model(valid_data, return_loss = True)
-            print(f"validation loss: {loss.item():.3f}")
-            print(f"validation small loss: {small_loss.item():.3f}")
+            print(f"validation - loss: {loss.item():.3f}\tsmall loss: {small_loss.item():.3f}")
 
     if i % GENERATE_EVERY == 0:
         model.eval()

@@ -27,7 +27,7 @@ GRAD_ACCUM_EVERY = 4
 LEARNING_RATE = 1e-4
 VALIDATE_EVERY = 100
 PRIME_LENGTH = 128
-GENERATE_EVERY = 500
+GENERATE_EVERY = 100
 GENERATE_LENGTH = 512
 SEQ_LEN = 512
 GAMMA = 5
@@ -104,7 +104,7 @@ class TextSamplerDataset(Dataset):
 train_dataset = TextSamplerDataset(data_train, SEQ_LEN)
 val_dataset = TextSamplerDataset(data_val, SEQ_LEN)
 train_loader = cycle(DataLoader(train_dataset, batch_size=BATCH_SIZE))
-val_loader = cycle(DataLoader(val_dataset, batch_size=BATCH_SIZE))
+val_loader = cycle(DataLoader(val_dataset, batch_size=1))
 
 # optimizer
 
@@ -126,8 +126,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
         (loss / GRAD_ACCUM_EVERY).backward()
         (small_loss / GRAD_ACCUM_EVERY).backward()
 
-    print(f"training loss: {loss.item():.3f}")
-    print(f"training small loss: {small_loss.item():.3f}")
+    print(f"loss: {loss.item():.3f}\tsmall loss: {small_loss.item():.3f}")
 
     torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
     torch.nn.utils.clip_grad_norm_(small_model.parameters(), 0.5)
@@ -144,10 +143,9 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
             valid_data = next(val_loader)
 
             loss = model(valid_data, return_loss = True)
-            print(f"validation loss: {loss.item():.3f}")
-
             small_loss = small_model(valid_data, return_loss = True)
-            print(f"validation small loss: {small_loss.item():.3f}")
+
+            print(f"validation - loss: {loss.item():.3f}\tsmall loss: {small_loss.item():.3f}")
 
     if i % GENERATE_EVERY == 0:
         model.eval()
@@ -157,7 +155,8 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
         prime = decode_tokens(inp)
         print(f"%s \n\n %s", (prime, "*" * 100))
 
-        prompt = inp[None, ...]
+        from einops import repeat
+        prompt = repeat(inp, '... -> b ...', b = 2)
 
         sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 

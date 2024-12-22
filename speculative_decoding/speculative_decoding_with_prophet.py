@@ -5,7 +5,6 @@ from torch.nn import Module, ModuleList
 from torch import nn, einsum, Tensor
 import torch.nn.functional as F
 
-from rotary_embedding_torch import RotaryEmbedding
 from beartype import beartype
 
 from collections import namedtuple
@@ -92,17 +91,6 @@ def base_decoding(
 
     return out[..., prompt_seq_len:]
 
-# norm
-
-class RMSNorm(Module):
-    def __init__(self, dim):
-        super().__init__()
-        self.scale = dim ** 0.5
-        self.gamma = nn.Parameter(torch.ones(dim))
-
-    def forward(self, x):
-        return F.normalize(x, dim = -1) * self.scale * self.gamma
-
 # attention and feedforward
 
 class CausalAttention(Module):
@@ -118,7 +106,7 @@ class CausalAttention(Module):
         self.heads = heads
         dim_inner = dim_head * heads
 
-        self.norm = RMSNorm(dim)
+        self.norm = nn.RMSNorm(dim)
 
         self.to_qkv = nn.Linear(dim, dim_inner * 3, bias = False)
         self.to_out = nn.Linear(dim_inner, dim, bias = False)
@@ -170,7 +158,7 @@ class CausalAttention(Module):
 def FeedForward(dim, mult = 4):
     dim_inner = dim * mult
     return nn.Sequential(
-        RMSNorm(dim),
+        nn.RMSNorm(dim),
         nn.Linear(dim, dim_inner),
         nn.GELU(),
         nn.Linear(dim_inner, dim)
@@ -205,7 +193,7 @@ class Decoder(Module):
             ]))
 
         self.to_logits = nn.Sequential(
-            RMSNorm(dim),
+            nn.RMSNorm(dim),
             nn.Linear(dim, num_tokens, bias = False)
         )
 
@@ -509,25 +497,28 @@ def speculative_decoding_with_prophet_model(
         # do a bunch of slicing and align everything to the right, including kv caches
 
         max_num_rejected = num_rejected.amax()
-        seq_arange = torch.arange(out.shape[-1], device = device, dtype = torch.long)
-        seq_offset_indices = seq_arange + (max_num_rejected - num_rejected)[..., None]
 
+        curr_len = out.shape[-1]
         seq_lens -= num_rejected
         max_seq_len = seq_lens.amax()
 
+        seq_arange = torch.arange(max_seq_len, device = device, dtype = torch.long) + (curr_len - max_seq_len)
+
+        seq_offset_indices = seq_arange - num_rejected[..., None]
+
+        cached_kv, embed = cache
+
         if batch > 1:
-            out = F.pad(out, (0, max_num_rejected), value = pad_id)
             out = out[batch_range, seq_offset_indices]
 
-            cache = tuple(F.pad(t, (0, 0, 0, max_num_rejected), value = pad_id) for t in cache)
-            cache = tuple(rearrange(t, 'b ... n d -> b n ... d') for t in cache)
-            cache = tuple(t[batch_range, seq_offset_indices] for t in cache)
-            cache = tuple(rearrange(t, 'b n ... d -> b ... n d') for t in cache)
+            cached_kv = rearrange(cached_kv, 'b ... n d -> b n ... d')
+            cached_kv = cached_kv[batch_range, seq_offset_indices]
+            cached_kv = rearrange(cached_kv, 'b n ... d -> b ... n d')
+        else:
+            out = out[..., :max_seq_len]
+            cached_kv = cached_kv[..., :max_seq_len, :]
 
-            if out.shape[-1] > max_seq_len:
-                left_index = out.shape[-1] - max_seq_len
-                out = out[:, left_index:]
-                cache = tuple(t[..., left_index:, :] for t in cache)
+        cache = (cached_kv, None)
 
         # sample the additional token, one of the tricks in the paper to better bound the worst case
 
@@ -536,7 +527,6 @@ def speculative_decoding_with_prophet_model(
         out = torch.cat((out, next_token), dim = -1)
         seq_lens += 1
 
-        _, embeds = cache
         next_prophet_start_tokens = to_prophet_start_token(embeds[:, -num_start_tokens:])
 
     # now left align
