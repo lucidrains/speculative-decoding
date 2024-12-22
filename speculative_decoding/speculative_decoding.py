@@ -215,7 +215,7 @@ def speculative_decoding(
         small_cached_kv, _ = small_cache
 
         if batch > 1:
-            small_cached_kv = F.pad(small_cached_kv, (0, 0, 0, 1))
+            small_cached_kv = F.pad(small_cached_kv, (0, 0, 0, 1))  # account for small model being a token behind
 
             out = out[batch_range, seq_offset_indices]
 
@@ -375,7 +375,7 @@ def speculative_decoding_with_same_model(
         small_cached_kv, _ = small_cache
 
         if batch > 1:
-            small_cached_kv = F.pad(small_cached_kv, (0, 0, 0, 1))
+            small_cached_kv = F.pad(small_cached_kv, (0, 0, 0, 1)) # account for small model being a token behind
             out = out[batch_range, seq_offset_indices]
 
             cached_kv = rearrange(cached_kv, 'b ... n d -> b n ... d')

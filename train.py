@@ -104,7 +104,7 @@ class TextSamplerDataset(Dataset):
 train_dataset = TextSamplerDataset(data_train, SEQ_LEN)
 val_dataset = TextSamplerDataset(data_val, SEQ_LEN)
 train_loader = cycle(DataLoader(train_dataset, batch_size=BATCH_SIZE))
-val_loader = cycle(DataLoader(val_dataset, batch_size=1))
+val_loader = cycle(DataLoader(val_dataset, batch_size=BATCH_SIZE))
 
 # optimizer
 
@@ -155,8 +155,7 @@ for i in tqdm.tqdm(range(NUM_BATCHES), mininterval = 10.0, desc = "training"):
         prime = decode_tokens(inp)
         print(f"%s \n\n %s", (prime, "*" * 100))
 
-        from einops import repeat
-        prompt = repeat(inp, '... -> b ...', b = 2)
+        prompt = inp[None, ...]
 
         sampled, base_decode_elapsed = benchmark(base_decoding)(model, prompt, GENERATE_LENGTH)
 
