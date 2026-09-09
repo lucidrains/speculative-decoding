@@ -531,12 +531,12 @@ class Decoder(Module):
         if exists(early_exit_layer):
             for _ in range(early_exit_extra_transformer_blocks):
                 self.early_exit_transformer_blocks.append(ModuleList([
-                    CausalAttention(dim = dim, dim_head = dim_head, heads = heads, rotary_emb = rotary_emb),
+                    CausalAttention(dim = dim, dim_head = dim_head, heads = heads),
                     FeedForward(dim = dim, mult = ff_mult)
                 ]))
 
             self.to_early_exit_logits = nn.Sequential(
-                RMSNorm(dim),
+                nn.RMSNorm(dim),
                 nn.Linear(dim, num_tokens, bias = False)
             )
 
